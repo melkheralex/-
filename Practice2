@@ -1,0 +1,216 @@
+from abc import ABC, abstractmethod
+from enum import Enum
+from typing import List
+
+
+# 1. АБСТРАКЦИЯ (Базовый каркас позиции меню)
+
+class MenuItem(ABC):
+    def __init__(self, name: str, base_price: float):
+        self._name = name
+        self._base_price = base_price
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def base_price(self) -> float:
+        return self._base_price
+
+    @abstractmethod
+    def calculatePrice(self) -> float:
+        """Рассчитывает итоговую стоимость блюда."""
+        pass
+
+
+# 3. ПОЛИМОРФИЗМ (Разные типы блюд)
+
+class Pizza(MenuItem):
+    def __init__(self, name: str, base_price: float, is_large: bool = False):
+        super().__init__(name, base_price)
+        self.is_large = is_large
+
+    def calculatePrice(self) -> float:
+        # Если пицца большая, цена увеличивается на 30%
+        if self.is_large:
+            return self.base_price * 1.30
+        return self.base_price
+
+
+class Drink(MenuItem):
+    def __init__(self, name: str, base_price: float, is_ice: bool = False):
+        super().__init__(name, base_price)
+        self.is_ice = is_ice
+
+    @property
+    def name(self) -> str:
+        # Добавляем "со льдом" к названию, если флаг равен True
+        if self.is_ice:
+            return f"{self._name} (со льдом)"
+        return self._name
+
+    def calculatePrice(self) -> float:
+        # Наличие льда не влияет на цену
+        return self.base_price
+
+
+class ComboSet(MenuItem):
+    def __init__(self, name: str, items: List[MenuItem]):
+        # Базовая цена комбо рассчитывается динамически
+        super().__init__(name, base_price=0.0)
+        self.items = items
+
+    def calculatePrice(self) -> float:
+        # Суммируем цены всех блюд внутри комбо и применяем скидку 15%
+        total = sum(item.calculatePrice() for item in self.items)
+        return total * 0.85
+
+
+# 3. ПОЛИМОРФИЗМ (Разные способы оплаты)
+
+class PaymentStrategy(ABC):
+    @abstractmethod
+    def collectPayment(self, amount: float) -> bool:
+        """Проводит оплату заданной суммы."""
+        pass
+
+
+class CardPayment(PaymentStrategy):
+    def __init__(self, card_number: str, is_expired: bool = False):
+        self.card_number = card_number
+        self.is_expired = is_expired
+
+    def collectPayment(self, amount: float) -> bool:
+        if self.is_expired:
+            print(f"[Ошибка оплаты] Карта {self.card_number} просрочена!")
+            return False
+        print(f"[Оплата картой] Списано {amount:.2f} руб. с карты {self.card_number}.")
+        return True
+
+
+class CashPayment(PaymentStrategy):
+    def collectPayment(self, amount: float) -> bool:
+        print(f"[Оплата наличными] Оплата при получении курьеру: {amount:.2f} руб.")
+        return True
+
+
+# 2. ИНКАПСУЛЯЦИЯ (Управление заказом)
+
+class OrderStatus(Enum):
+    CREATED = "Создан"
+    COOKING = "Готовится"
+    DELIVERING = "В пути"
+    COMPLETED = "Завершен"
+
+
+class Order:
+    def __init__(self):
+        # Приватные атрибуты
+        self.__items: List[MenuItem] = []
+        self.__status: OrderStatus = OrderStatus.CREATED
+        self.__is_paid: bool = False
+
+    @property
+    def status(self) -> OrderStatus:
+        return self.__status
+
+    def addItem(self, item: MenuItem) -> None:
+        # Запрещаем добавление, если статус "Готовится" или дальше
+        if self.__status != OrderStatus.CREATED:
+            raise ValueError(
+                f"Нельзя добавить '{item.name}' в заказ! Заказ уже находится в статусе '{self.__status.value}'."
+            )
+        self.__items.append(item)
+        print(f"Добавлено в корзину: {item.name} — {item.calculatePrice():.2f} руб.")
+
+    def getTotalCost(self) -> float:
+        # Вызов полиморфного метода calculatePrice() для всех позиций
+        return sum(item.calculatePrice() for item in self.__items)
+
+    def nextStep(self) -> None:
+        """Переводит заказ на следующий этап."""
+        statuses = list(OrderStatus)
+        current_index = statuses.index(self.__status)
+
+        if current_index < len(statuses) - 1:
+            self.__status = statuses[current_index + 1]
+            print(f"Статус заказа изменен на: {self.__status.value}")
+        else:
+            print("Заказ уже завершен!")
+
+    def pay(self, payment_method: PaymentStrategy) -> bool:
+        if self.__is_paid:
+            print("Заказ уже оплачен!")
+            return True
+
+        total_amount = self.getTotalCost()
+        print(f"\nПопытка оплаты заказа на сумму: {total_amount:.2f} руб.")
+        
+        success = payment_method.collectPayment(total_amount)
+        if success:
+            self.__is_paid = True
+            print("Оплата прошла успешно!")
+            return True
+        else:
+            print("Не удалось провести оплату.")
+            return False
+
+    def print_receipt(self) -> None:
+        """Вывод чека на экран."""
+        print("\n--- ЧЕК ЗАКАЗА ---")
+        for item in self.__items:
+            print(f"- {item.name}: {item.calculatePrice():.2f} руб.")
+        print(f"ИТОГО К ОПЛАТЕ: {self.getTotalCost():.2f} руб.")
+        print(f"Статус: {self.__status.value}")
+        print("-------------------\n")
+
+
+# ПРИМЕР ИСПОЛЬЗОВАНИЯ И ПРОВЕРКА РАБОТЫ
+
+if __name__ == "__main__":
+    # 1. Создаем позиции меню
+    pizza_small = Pizza(name="Пепперони", base_price=500, is_large=False)
+    pizza_large = Pizza(name="Маргарита", base_price=400, is_large=True)  # +30%
+    cola = Drink(name="Кола", base_price=100, is_ice=True)                # "со льдом"
+
+    # Создаем Комбо (Пицца + Напиток) со скидкой 15%
+    combo_items = [
+        Pizza(name="Гавайская", base_price=450, is_large=False),
+        Drink(name="Спрайт", base_price=90, is_ice=False)
+    ]
+    combo_set = ComboSet(name="Комбо Обед", items=combo_items)
+
+    # 2. Формируем заказ
+    print("#1 Формирование заказа")
+    my_order = Order()
+    my_order.addItem(pizza_large)
+    my_order.addItem(cola)
+    my_order.addItem(combo_set)
+
+    my_order.print_receipt()
+
+    # 3. Оплата (Полиморфизм способов оплаты)
+    print("#2 Оплата")
+    # Попробуем сначала просроченную карту
+    failed_card = CardPayment(card_number="4000-1111-2222-3333", is_expired=True)
+    my_order.pay(failed_card)
+
+    # Теперь оплатим наличными
+    cash = CashPayment()
+    my_order.pay(cash)
+
+    # 4. Продвижение заказа по статусам
+    print("\n#3 Готовка и доставка")
+    my_order.nextStep()  # Переходит в статус "Готовится"
+
+    # Проверка инкапсуляции: пытаемся добавить блюдо в готовящийся заказ
+    print("\nПопытка добавить блюдо в готовящийся заказ:")
+    try:
+        my_order.addItem(pizza_small)
+    except ValueError as e:
+        print(f"Перехвачена ошибка инкапсуляции: {e}")
+
+    # Завершаем этапы доставки
+    my_order.nextStep()  # В пути
+    my_order.nextStep()  # Завершен
