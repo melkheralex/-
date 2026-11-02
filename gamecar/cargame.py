@@ -8,7 +8,6 @@ WIN_HEIGHT = 600
 win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
 pygame.display.set_caption("Моя игра")
 
-# Автоматический поиск файла car с любым расширением (.png, .jpg, .jpeg)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 car_img = None
 
